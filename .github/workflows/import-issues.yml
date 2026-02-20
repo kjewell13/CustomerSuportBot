@@ -1,0 +1,37 @@
+name: Import issues from YAML
+
+on:
+  workflow_dispatch:
+    inputs:
+      yaml_path:
+        description: "Path to issues YAML file"
+        required: false
+        default: ".issue-seeds/issues.yml"
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyyaml
+
+      - name: Create issues
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUES_YAML_PATH: ${{ inputs.yaml_path }}
+        run: |
+          python scripts/create_issues_from_yaml.py
