@@ -1,0 +1,375 @@
+issues:
+  - title: "DB: Add SQLite schema + initialization (orders table)"
+    topic: "db"
+    labels: ["db", "backend", "good-first-pr"]
+    body: |
+      ## What we’re doing
+      Add a minimal SQLite database with an `orders` table. This creates a real “tool-backed” capability for the bot (order lookup) instead of canned responses.
+
+      ## Why we have to do this
+      LLMs can generate language, but the bot needs a source of truth for facts like order status. A DB-backed lookup is the simplest real integration and maps directly to “interfaces with external APIs / data.”
+
+      ## Process
+      1) Create a `data/` folder and a file DB (e.g., `data/app.db`).
+      2) Write an `init_db()` function that:
+         - opens a connection
+         - runs `CREATE TABLE IF NOT EXISTS orders (...)`
+      3) Ensure `init_db()` is called once at app startup (or in a CLI command).
+
+      ## Acceptance criteria
+      - Running the app creates the DB file and `orders` table if missing.
+      - Table uses a primary key on `order_id`.
+      - SQL uses parameterized queries (no string formatting).
+
+      ## Helpful resources
+      - https://www.sqlitetutorial.net/sqlite-python/creating-tables/
+      - https://www.sqlite.org/lang_createtable.html
+
+  - title: "DB: Implement OrderRepository (get_order, upsert_order, list_orders)"
+    topic: "db"
+    labels: ["db", "backend"]
+    body: |
+      ## What we’re doing
+      Create a small repository layer (`OrderRepository`) that encapsulates DB access. This prevents sqlite calls from leaking into ChatManager/dialogue logic.
+
+      ## Why we have to do this
+      This is “clean architecture lite”: the dialogue system should depend on an interface like `get_order(order_id)` rather than raw SQL, so we can later swap SQLite → Postgres or an external API without rewriting the bot.
+
+      ## Process
+      1) Create `repositories/order_repo.py`
+      2) Implement:
+         - `get_order(order_id) -> Order | None`
+         - `upsert_order(order)` for seeding/demo updates
+         - `list_orders(limit=...)` for debugging
+      3) Return typed records (dataclass or dict) rather than raw tuples.
+
+      ## Acceptance criteria
+      - No raw SQL outside the repository module.
+      - All queries parameterized.
+      - Repository is usable from unit tests with a temp DB.
+
+      ## Helpful resources
+      - https://www.sqlitetutorial.net/sqlite-python/insert/
+      - https://www.sqlitetutorial.net/sqlite-python/insert/
+
+  - title: "DB: Add seed data + dev fixtures for orders"
+    topic: "db"
+    labels: ["db", "devx"]
+    body: |
+      ## What we’re doing
+      Seed a few sample orders (5–20) so you can demo order lookups immediately.
+
+      ## Why we have to do this
+      A demo DB gives you repeatable, testable scenarios and makes it easy to validate multi-turn flows without manually inserting data every run.
+
+      ## Process
+      1) Create `scripts/seed_db.py` OR `seed_db()` function in the repo layer.
+      2) Insert a few known orders:
+         - various statuses (processing/shipped/delivered/cancelled)
+         - include ETA/email fields if you want.
+      3) Make it idempotent (safe to run multiple times).
+
+      ## Acceptance criteria
+      - One command seeds the DB.
+      - Seed is deterministic and repeatable.
+      - README documents how to seed.
+
+      ## Helpful resources
+      - https://pynative.com/python-sqlite-insert-into-table/
+      - https://www.sqlitetutorial.net/sqlite-python/insert/
+
+  - title: "Dialogue: Add pending-slot flow for order lookup (stateful multi-turn)"
+    topic: "dialogue"
+    labels: ["dialogue", "backend", "core"]
+    body: |
+      ## What we’re doing
+      Use ChatState to support a two-step order flow:
+      1) user asks about order status
+      2) bot asks for order_id
+      3) user provides order_id
+      4) bot looks up DB and responds
+
+      ## Why we have to do this
+      This is the smallest “real dialogue management” feature. It proves state is working and prevents the common failure mode where “12345” becomes UNKNOWN intent.
+
+      ## Process
+      1) In ChatState, ensure fields exist:
+         - `current_intent`
+         - `pending_slot` (e.g., "order_id")
+         - `user_data`/`slots` dict
+      2) In ChatManager/DialogueManager:
+         - if pending_slot == "order_id", treat next user text as order_id and clear pending_slot
+         - call OrderRepository.get_order(order_id)
+         - respond based on result found/not found
+
+      ## Acceptance criteria
+      - “Where is my order?” triggers “What’s your order id?”
+      - Next message “123” triggers DB lookup and a meaningful response.
+      - State persists per WebSocket connection.
+
+      ## Helpful resources
+      - https://fastapi.tiangolo.com/advanced/websockets/
+
+  - title: "Transport: Switch WebSocket payloads to JSON events (type + payload)"
+    topic: "websocket"
+    labels: ["websocket", "protocol", "backend"]
+    body: |
+      ## What we’re doing
+      Replace raw text messages with a simple JSON protocol so the server can send different event types:
+      - user_message
+      - assistant_message
+      - error
+      - (later) partial_response
+      - (later) tts_audio_ready
+
+      ## Why we have to do this
+      Once you add streaming + TTS, you need more than “one string”. JSON events are the standard approach for chat agents.
+
+      ## Process
+      1) Update the browser client to send JSON: { "type": "user_message", "text": "..." }
+      2) On server, use `receive_json()` and `send_json()` (or parse text JSON).
+      3) Define a small event schema (dataclass or Pydantic model).
+
+      ## Acceptance criteria
+      - Client can send user_message JSON.
+      - Server responds with assistant_message JSON.
+      - Unknown message types return an error event.
+
+      ## Helpful resources
+      - https://fastapi.tiangolo.com/advanced/websockets/
+      - https://stackoverflow.com/questions/64101460/fast-api-sending-json-response-in-web-socket
+
+  - title: "Observability: Add structured logging with session_id + intent fields"
+    topic: "logging"
+    labels: ["logging", "observability", "backend"]
+    body: |
+      ## What we’re doing
+      Configure Python logging and emit structured-ish logs (key/value fields) for:
+      - websocket connect/disconnect
+      - message received
+      - classified intent
+      - DB lookup success/failure
+
+      Include a `session_id` per connection so logs can be traced.
+
+      ## Why we have to do this
+      In production, you debug through logs. Adding intent/latency/session fields demonstrates “monitor performance and troubleshoot production issues.”
+
+      ## Process
+      1) Create `utils/logging.py` and configure a module-level logger.
+      2) Generate `session_id` at websocket connect and store in ChatState.
+      3) Log events with structured fields (use `extra={...}` or a simple JSON formatter later).
+      4) Avoid logging sensitive data (full user text, emails) unless masked.
+
+      ## Acceptance criteria
+      - Logs include session_id for all messages on a connection.
+      - Logs include intent for each user message.
+      - No plaintext secrets in logs.
+
+      ## Helpful resources
+      - https://signoz.io/guides/python-logging-best-practices/
+      - https://docs.python.org/3/howto/logging.html
+
+  - title: "Observability: Add @timed decorator for latency measurement (async-safe)"
+    topic: "logging"
+    labels: ["decorators", "observability", "backend"]
+    body: |
+      ## What we’re doing
+      Add an async-aware decorator `@timed` to measure latency for:
+      - intent classification
+      - DB lookup
+      - LLM calls (later)
+
+      ## Why we have to do this
+      Latency is the core metric for real-time voice/chat. Decorators also demonstrate “advanced Python” skills from the job description.
+
+      ## Process
+      1) Implement `@timed(name=...)` that works on async functions.
+      2) Log duration_ms with the existing logger.
+      3) Wrap key functions in ChatManager and repository.
+
+      ## Acceptance criteria
+      - Latency logs show duration_ms.
+      - Decorator works for async functions.
+      - Minimal overhead.
+
+      ## Helpful resources
+      - https://docs.python.org/3/library/functools.html
+      - https://www.dash0.com/guides/logging-in-python
+
+  - title: "Testing: Add unit tests for ChatManager multi-turn flow (state transitions)"
+    topic: "testing"
+    labels: ["tests", "dialogue", "backend"]
+    body: |
+      ## What we’re doing
+      Add unit tests that validate dialogue state behavior without running the server.
+
+      ## Why we have to do this
+      Most bugs in chat agents come from state transitions. Unit tests prevent regressions and prove the design is maintainable.
+
+      ## Process
+      1) Create tests for:
+         - “order status” sets pending_slot="order_id"
+         - next message stores order_id and clears pending_slot
+         - DB lookup returns correct message (mock repo)
+      2) Use dependency injection: pass a fake repository to ChatManager.
+
+      ## Acceptance criteria
+      - Tests pass without launching uvicorn.
+      - State is updated as expected on each turn.
+
+      ## Helpful resources
+      - https://fastapi.tiangolo.com/advanced/testing-websockets/
+      - https://docs.pytest.org/en/stable/
+
+  - title: "Testing: Add WebSocket integration test (client sends message, server replies)"
+    topic: "testing"
+    labels: ["tests", "websocket", "integration"]
+    body: |
+      ## What we’re doing
+      Add a FastAPI TestClient WebSocket test to validate the end-to-end loop.
+
+      ## Why we have to do this
+      Verifies your wiring: websocket endpoint, JSON protocol, ChatManager call, and response send.
+
+      ## Process
+      1) Use FastAPI’s `TestClient` and `websocket_connect`.
+      2) Send a message event and assert response event.
+
+      ## Acceptance criteria
+      - Integration test passes consistently.
+      - Test covers connect → send → receive → close.
+
+      ## Helpful resources
+      - https://fastapi.tiangolo.com/advanced/testing-websockets/
+
+  - title: "AI: Add OpenAI async client wrapper (LLMClient) + env config"
+    topic: "ai-integration"
+    labels: ["ai", "integrations", "backend"]
+    body: |
+      ## What we’re doing
+      Add an async LLM client wrapper that encapsulates:
+      - API key loading from environment
+      - a single method like `generate_response(messages, ...)`
+
+      ## Why we have to do this
+      Wrapping the vendor SDK keeps your app clean, makes it mockable in tests, and matches “interfaces with external APIs.”
+
+      ## Process
+      1) Add dependency: openai python library
+      2) Create `integrations/llm_client.py`:
+         - initialize async client
+         - implement `generate_text(prompt or messages) -> str`
+      3) Add a `.env.example` documenting required env vars.
+
+      ## Acceptance criteria
+      - LLMClient can be imported without side effects.
+      - Missing API key yields a clear error.
+      - Function is async and awaitable.
+
+      ## Helpful resources
+      - https://developers.openai.com/api/reference/python/
+      - https://platform.openai.com/docs/api-reference/responses
+
+  - title: "AI: Response generation (LLM) with tool-grounded outputs"
+    topic: "ai-integration"
+    labels: ["ai", "dialogue", "backend"]
+    body: |
+      ## What we’re doing
+      Use the LLM to generate *natural language* responses, but keep facts grounded:
+      - DB/tool results are computed by code
+      - LLM is given the result to phrase nicely
+
+      ## Why we have to do this
+      Prevents hallucinations (e.g., inventing order status). This is the recommended pattern: “LLM for language, code for truth.”
+
+      ## Process
+      1) In ChatManager, after DB lookup, build a structured “tool result” summary.
+      2) Send the tool result + conversation context to the LLMClient.
+      3) Return the LLM’s phrased response.
+
+      ## Acceptance criteria
+      - Order status is always derived from DB output.
+      - LLM only rewrites/frames the result.
+      - Timeout + fallback message if LLM fails.
+
+      ## Helpful resources
+      - https://platform.openai.com/docs/api-reference/responses
+      - https://developers.openai.com/api/docs/guides/streaming-responses/
+
+  - title: "AI: Optional LLM-based intent classification (fallback to rules)"
+    topic: "ai-integration"
+    labels: ["ai", "intent", "backend", "optional"]
+    body: |
+      ## What we’re doing
+      Add an LLM classifier that returns one of your Intent enums, but keep rule-based classification as a fallback.
+
+      ## Why we have to do this
+      LLMs handle messy user phrasing better than keyword rules. Fallback keeps behavior predictable and safe when the model is uncertain.
+
+      ## Process
+      1) Define a strict output format for the LLM (e.g., JSON with intent + confidence).
+      2) Parse/validate the output and map to Intent enum.
+      3) If confidence is low or parsing fails, fall back to IntentClassifier.classify().
+
+      ## Acceptance criteria
+      - LLM classifier returns valid Intent enum values.
+      - Bad outputs do not break the server.
+      - Clear logs show whether LLM or rules were used.
+
+      ## Helpful resources
+      - https://platform.openai.com/docs/api-reference/responses
+      - https://docs.python.org/3/library/json.html
+
+  - title: "AI UX: Stream partial responses over WebSocket (typing/partial events)"
+    topic: "ai-integration"
+    labels: ["ai", "websocket", "streaming", "ux"]
+    body: |
+      ## What we’re doing
+      Stream the assistant response as it’s generated, sending:
+      - partial_response events (deltas)
+      - final assistant_message event
+
+      ## Why we have to do this
+      Streaming makes the bot feel faster and is important for voice systems where perceived latency matters.
+
+      ## Process
+      1) Update WebSocket protocol to support partial events.
+      2) Use the OpenAI streaming guide and forward deltas to the client.
+      3) Client renders partial text progressively.
+
+      ## Acceptance criteria
+      - Client shows incremental output.
+      - Final message is sent once complete.
+      - Disconnect cancels the streaming task cleanly.
+
+      ## Helpful resources
+      - https://developers.openai.com/api/docs/guides/streaming-responses/
+      - https://fastapi.tiangolo.com/advanced/websockets/
+
+  - title: "Hardening: Add timeout/cancellation handling for DB + LLM calls"
+    topic: "reliability"
+    labels: ["reliability", "asyncio", "backend"]
+    body: |
+      ## What we’re doing
+      Ensure long operations don’t hang the server:
+      - timeouts for LLM calls
+      - cancel tasks if the client disconnects
+      - catch exceptions and send error events
+
+      ## Why we have to do this
+      Real-time agents must remain responsive. This maps to “monitor performance and troubleshoot production issues across services.”
+
+      ## Process
+      1) Wrap LLM calls with an asyncio timeout.
+      2) On WebSocketDisconnect, cancel any in-flight tasks.
+      3) Add structured logs for timeouts and cancellations.
+
+      ## Acceptance criteria
+      - LLM timeout returns a helpful fallback response.
+      - No server crash on disconnect mid-generation.
+      - Logs include error category and session_id.
+
+      ## Helpful resources
+      - https://docs.python.org/3/library/asyncio-task.html
+      - https://fastapi.tiangolo.com/advanced/websockets/
