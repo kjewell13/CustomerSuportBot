@@ -1,6 +1,9 @@
 from fastapi import FastAPI, WebSocket
 from fastapi.responses import HTMLResponse
 
+from models.chat_manager import ChatManager
+from models.chat_state import ChatState
+
 app = FastAPI()
 
 
@@ -45,21 +48,18 @@ async def get():
 @app.websocket("/ws")
 async def websocket_endpoint(socket: WebSocket):
     await socket.accept()
+
+    # first create a chat state on per connection basis
+    state = ChatState()
+
     while True:
-        
         data = await socket.receive_text()
-        response = await get_response(data)
+        response = await get_response(data, state)
         await socket.send_text(response)
 
 # should be asyncronous as eventually reponse will be attained from llm call -- time intensive
-async def get_response(message: str) -> str:
-    print(message)
-    split_message = message.strip().splitlines()
-    print(split_message)
-
-    # simple response from 'bot' for testing
-    if("hi" in split_message or "hello" in split_message):
-        return "Hey, What can I help you with today?"
-    elif("bye" in split_message):
-        return "Goodbye, hopefully I helped you today!"
+async def get_response(message: str, state: ChatState) -> str:
+    stripped_message = message.strip()
+    m = ChatManager.handle_client_input(stripped_message, state)
+    return m
 
