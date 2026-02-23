@@ -3,6 +3,7 @@ from models.message import Message
 from models.intent import Intent
 from dataclasses import dataclass, field
 
+from typing import Optional
 
 # instantated on a per connection basis, stored in db (sqlite -> eventually ling term like postgres)
 
@@ -15,7 +16,7 @@ field(default_factory={type})
 @dataclass
 class ChatState:
     chat_history: list = field(default_factory=list)
-    current_intent: Intent = None 
-    pending_data: str = None            # like user_id used for state preservation across messages with same intent (refund)
+    current_intent: Optional[Intent] = None 
+    pending_data: Optional[str] = None            # like user_id used for state preservation across messages with same intent (refund)
     user_data: dict  = field(default_factory=dict)        # like {"user_id" : "123"}
 

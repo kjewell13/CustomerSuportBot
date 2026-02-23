@@ -4,6 +4,9 @@ from fastapi.responses import HTMLResponse
 from models.chat_manager import ChatManager
 from models.chat_state import ChatState
 
+
+from starlette.websockets import WebSocketDisconnect
+
 app = FastAPI()
 
 
@@ -52,14 +55,16 @@ async def websocket_endpoint(socket: WebSocket):
     # first create a chat state on per connection basis
     state = ChatState()
 
-    while True:
-        data = await socket.receive_text()
-        response = await get_response(data, state)
-        await socket.send_text(response)
+    try:
+        while True:
+            data = await socket.receive_text()
+            response = await get_response(data, state)
+            await socket.send_text(response)
+    except WebSocketDisconnect:
+        pass
 
 # should be asyncronous as eventually reponse will be attained from llm call -- time intensive
 async def get_response(message: str, state: ChatState) -> str:
     stripped_message = message.strip()
-    m = ChatManager.handle_client_input(stripped_message, state)
-    return m
+    return await ChatManager.handle_client_input(stripped_message, state)
 
