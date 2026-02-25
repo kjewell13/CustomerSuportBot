@@ -1,4 +1,4 @@
-````md
+```txt
 # AI Customer Support Bot — Full-Stack Template
 
 A local, full-stack **AI customer support agent template** designed for learning, demos, and extension into real systems.
