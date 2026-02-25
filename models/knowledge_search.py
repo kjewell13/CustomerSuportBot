@@ -121,8 +121,3 @@ def knowledge_search(query: str, top_k: int = 3, folder: str= "knowledge") -> Di
 
     return {"query": query, "top_k" : top_k, "matches": final_matches}
 
-
-
-
-        
-

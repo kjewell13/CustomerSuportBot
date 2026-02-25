@@ -7,6 +7,10 @@ from models.chat_state import ChatState
 
 from starlette.websockets import WebSocketDisconnect
 
+# for database persistence
+import uuid
+from db.chat_db import SqliteChatRepo
+
 app = FastAPI()
 
 
@@ -48,19 +52,33 @@ html = """
 async def get():
     return HTMLResponse(html)
 
+# set up storage once
+db = SqliteChatRepo()
+
 @app.websocket("/ws")
 async def websocket_endpoint(socket: WebSocket):
     await socket.accept()
 
+    session_id = str(uuid.uuid4())
+    db.create_session(session_id)
+    db.add_event(session_id, "session_started", {"source": "websocket"})
+
     # first create a chat state on per connection basis
     state = ChatState()
+
+    state.user_data["session_id"] = session_id
 
     try:
         while True:
             data = await socket.receive_text()
+            db.add_message(session_id, "user", data)
+
             response = await get_response(data, state)
+            db.add_message(session_id, "assistant", response)
+
             await socket.send_text(response)
     except WebSocketDisconnect:
+        db.add_event(session_id, "session_closed", {})
         pass
 
 # should be asyncronous as eventually reponse will be attained from llm call -- time intensive
