@@ -6,6 +6,9 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
+from contextlib import contextmanager
+from collections.abc import Iterator
+
 DEFAULT_DB_PATH = "data/app.db"
 
 def now_iso() -> str:
@@ -22,10 +25,14 @@ class SqliteChatRepo:
     def __init__(self, db_path: Optional[str] = None):
         self.db_path = db_path or os.getenv("DB_PATH", DEFAULT_DB_PATH)
 
-    def _conn(self) -> sqlite3.Connection:
+    @contextmanager
+    def _conn(self) -> Iterator[sqlite3.Connection]:
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
-        return conn
+        try:
+            yield conn
+        finally:
+            conn.close()
 
     def create_session(self, session_id: str, created_at: Optional[str] = None) -> None:
         created_at = created_at or now_iso()

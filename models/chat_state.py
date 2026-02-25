@@ -1,5 +1,5 @@
 # handles state of convsersation, acts as 'memory' for bot in each conversation
-from models.message import Message
+
 from models.intent import Intent
 from dataclasses import dataclass, field
 
