@@ -11,3 +11,6 @@ __pycache__/
 
 demo-frontend/node_modules/
 demo-frontend/dist/
+
+# demo database
+data/demo.db
