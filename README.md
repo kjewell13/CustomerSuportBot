@@ -1,17 +1,17 @@
-```txt
 # AI Customer Support Bot — Full-Stack Template
 
-A local, full-stack **AI customer support agent template** designed for learning, demos, and extension into real systems.
+A local, full-stack AI customer support agent template designed for learning, demos, and reuse as a foundation for real systems.
 
 This project demonstrates how to:
-- Build an **LLM-driven intent router**
-- Handle **tool calling** (order lookup, knowledge base search)
-- Maintain **conversation state**
-- Persist chats with **SQLite**
-- Connect a **React frontend to a FastAPI backend via WebSockets**
-- Write **robust pytest coverage** for async + LLM-style code
 
-The repository is intentionally structured to be **readable, testable, and reusable** as a starting point for real support agents.
+- Build an LLM-driven intent router
+- Handle tool calling (order lookup, knowledge base search)
+- Maintain per-connection conversation state
+- Persist chat history using SQLite
+- Connect a React frontend to a FastAPI backend via WebSockets
+- Write robust pytest coverage for async, LLM-style code
+
+The repository is intentionally structured to be readable, testable, and reusable as a starting point for real support agents.
 
 ---
 
@@ -20,7 +20,7 @@ The repository is intentionally structured to be **readable, testable, and reusa
 ### High-level flow
 
 1. User opens the React web UI
-2. UI opens a **WebSocket** connection to the backend
+2. UI opens a WebSocket connection to the backend
 3. User sends a message
 4. Backend:
    - Stores the message
@@ -36,7 +36,7 @@ The repository is intentionally structured to be **readable, testable, and reusa
 ## Tech Stack
 
 ### Backend
-- Python **3.14.2**
+- Python 3.14.2
 - FastAPI
 - Uvicorn
 - OpenAI (async client)
@@ -73,8 +73,6 @@ models/
 
 demo-frontend/           # React/Vite demo UI
 tests/                   # Pytest unit tests
-````
-
 ---
 
 ## How the WebSocket Works
